@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Spam Email Detector</title>
+    <style>
+        /* Matrix-style Dark Terminal Theme */
+        body { 
+            font-family: 'Courier New', Courier, monospace; 
+            background-color: #000;
+            color: #00ff00;
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            margin: 0; 
+            padding: 10px; /* Reduced body padding */
+            box-sizing: border-box;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Matrix Code Background lines */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 255, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 0, 0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Scrolling ticker background (spam/ham alerts moving left & right) */
+        .ticker-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 2;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .ticker-row {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: 700;
+        }
+
+        .ticker-row .track {
+            display: inline-block;
+            white-space: nowrap;
+            will-change: transform;
+        }
+
+        .dir-left .track  { animation-name: tickerLeft;  animation-timing-function: linear; animation-iteration-count: infinite; }
+        .dir-right .track { animation-name: tickerRight; animation-timing-function: linear; animation-iteration-count: infinite; }
+
+        @keyframes tickerLeft {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-50%); }
+        }
+        @keyframes tickerRight {
+            from { transform: translateX(-50%); }
+            to   { transform: translateX(0); }
+        }
+
+        .tone-spam { color: #ff2b2b; text-shadow: 0 0 8px rgba(255, 43, 43, 0.65); font-size: 1.15rem; opacity: 0.75; letter-spacing: 1px; }
+        .tone-ham  { color: #00ff66; text-shadow: 0 0 8px rgba(0, 255, 102, 0.6);  font-size: 1.05rem; opacity: 0.65; letter-spacing: 1px; }
+        .tone-gold { color: #ffd23f; text-shadow: 0 0 8px rgba(255, 210, 63, 0.55); font-size: 1rem;   opacity: 0.6;  letter-spacing: 1px; }
+
+        @media (max-width: 700px) {
+            .ticker-row:nth-of-type(n+6) { display: none; }
+            .ticker-row { font-size: 0.85rem !important; }
+        }
+
+        /* Dark App Container with Green Borders - Modified for better screen fit */
+        .container { 
+            background-color: rgba(10, 10, 10, 0.95);
+            padding: 25px 60px; /* Reduced container padding from 40px 80px */
+            border: 2px solid #00ff00;
+            border-radius: 8px; 
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5); 
+            width: 100%; 
+            max-width: 1200px; /* Widened container */
+            text-align: center; 
+            position: relative;
+            z-index: 10; 
+            box-sizing: border-box;
+        }
+
+        /* Large, Glowing Terminal Heading */
+        .heading-wrapper {
+            padding: 5px 0; /* Reduced padding */
+            margin-bottom: 3px; /* Reduced from 5px */
+        }
+
+        h1 { 
+            font-size: 3.2rem; /* Slightly reduced font size */
+            font-weight: 700;
+            margin: 0;
+            color: #00ff00;
+            text-shadow: 0 0 10px #00ff00;
+            text-transform: uppercase;
+            font-family: 'Courier New', Courier, monospace;
+            letter-spacing: -2px;
+            display: inline-block;
+            transform: scaleY(1.8); /* Reduced scale factor significantly from 2.4 */
+        }
+
+        p { 
+            color: #00ff00;
+            font-size: 1.05rem; /* Reduced font size */
+            margin-top: 3px; /* Reduced from 5px */
+            margin-bottom: 15px; /* Reduced from 25px */
+            font-weight: 500; 
+            opacity: 0.8;
+        }
+
+        /* Dark, Green-bordered Dropdown */
+        .dropdown-wrapper {
+            margin-bottom: 10px; /* Reduced from 15px */
+            text-align: left;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px 12px; /* Reduced padding */
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            font-size: 1.05rem; /* Reduced font size */
+            color: #00ff00;
+            background-color: rgba(10, 10, 10, 0.9);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: monospace;
+        }
+
+        select:focus {
+            border-color: #00ff00;
+            outline: none;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+        
+        /* Dark, Green-bordered Textarea - Modified height for screen fit */
+        textarea { 
+            width: 100%; 
+            height: 250px; /* Reduced textarea height from 300px */
+            padding: 15px; /* Reduced padding */
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            resize: none; 
+            font-size: 1.05rem; /* Reduced font size */
+            box-sizing: border-box; 
+            transition: all 0.3s ease;
+            background-color: rgba(10, 10, 10, 0.9);
+            font-family: monospace;
+            color: #00ff00;
+        }
+
+        textarea:focus {
+            border-color: #00ff00;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.4);
+            outline: none;
+        }
+
+        /* Solid Dark Green Button */
+        button { 
+            width: 100%; 
+            background-color: #006400; /* darkgreen */
+            border: 1px solid #00ff00;
+            color: #ffffff; 
+            padding: 15px; /* Reduced padding */
+            font-size: 1.1rem; /* Reduced font size */
+            border-radius: 4px;
+            cursor: pointer; 
+            margin-top: 15px; /* Reduced from 20px */
+            font-weight: bold; 
+            font-family: monospace;
+            box-shadow: 0 6px 15px rgba(0, 100, 0, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 100, 0, 0.45);
+        }
+
+        /* Dark Status Banner - Compact result banner */
+        .result { 
+            margin-top: 15px; /* Reduced from 25px */
+            padding: 15px; /* Reduced from 24px */
+            border-radius: 4px;
+            font-size: 1.5rem; /* Reduced font size */
+            font-weight: 800; 
+            text-align: center; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            box-shadow: 0 6px 15px rgba(0, 255, 0, 0.2);
+            text-transform: uppercase;
+            font-family: monospace;
+            letter-spacing: 0.5px;
+            background-color: rgba(10, 10, 10, 0.95);
+        }
+        
+        .spam { 
+            color: #ff0000; 
+            border: 1px solid #ff0000;
+            border-left: 10px solid #ff0000; 
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+        }
+        
+        .ham { 
+            color: #00ff00; 
+            border: 1px solid #00ff00;
+            border-left: 10px solid #00ff00; 
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+        }
+
+        .icon {
+            font-size: 1.9rem; /* Reduced icon size */
+            margin-right: 15px; /* Reduced margin */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Animated background ticker: spam/ham alerts scrolling left and right -->
+    <div class="ticker-bg" aria-hidden="true">
+        <div class="ticker-row dir-left tone-spam" style="top:3%;">
+            <span class="track" style="animation-duration:22s;">🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW • 🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW • 🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW • 🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW • 🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW • 🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW • 🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW • 🚨 SPAM ALERT – WINNER! • CONGRATULATIONS! • CLAIM YOUR $1000 PRIZE NOW •</span>
+        </div>
+        <div class="ticker-row dir-right tone-ham" style="top:15%;">
+            <span class="track" style="animation-duration:28s;">✨ LEGITIMATE EMAIL – Hey, lunch today? • Quarterly Report for Review • Team Meeting Reminder • ✨ LEGITIMATE EMAIL – Hey, lunch today? • Quarterly Report for Review • Team Meeting Reminder • ✨ LEGITIMATE EMAIL – Hey, lunch today? • Quarterly Report for Review • Team Meeting Reminder • ✨ LEGITIMATE EMAIL – Hey, lunch today? • Quarterly Report for Review • Team Meeting Reminder • ✨ LEGITIMATE EMAIL – Hey, lunch today? • Quarterly Report for Review • Team Meeting Reminder • ✨ LEGITIMATE EMAIL – Hey, lunch today? • Quarterly Report for Review • Team Meeting Reminder •</span>
+        </div>
+        <div class="ticker-row dir-left tone-gold" style="top:27%;">
+            <span class="track" style="animation-duration:34s;">⚠️ URGENT: ACCOUNT SUSPENDED – VERIFY NOW! • DEAR CUSTOMER, YOUR ACCOUNT SUSPENSION NOTICE • ⚠️ URGENT: ACCOUNT SUSPENDED – VERIFY NOW! • DEAR CUSTOMER, YOUR ACCOUNT SUSPENSION NOTICE • ⚠️ URGENT: ACCOUNT SUSPENDED – VERIFY NOW! • DEAR CUSTOMER, YOUR ACCOUNT SUSPENSION NOTICE • ⚠️ URGENT: ACCOUNT SUSPENDED – VERIFY NOW! • DEAR CUSTOMER, YOUR ACCOUNT SUSPENSION NOTICE •</span>
+        </div>
+        <div class="ticker-row dir-right tone-spam" style="top:39%;">
+            <span class="track" style="animation-duration:19s;">💰 YOU'VE WON THE LOTTERY! $500,000 • SEND YOUR BANK DETAILS TO CLAIM • 💰 YOU'VE WON THE LOTTERY! $500,000 • SEND YOUR BANK DETAILS TO CLAIM • 💰 YOU'VE WON THE LOTTERY! $500,000 • SEND YOUR BANK DETAILS TO CLAIM • 💰 YOU'VE WON THE LOTTERY! $500,000 • SEND YOUR BANK DETAILS TO CLAIM •</span>
+        </div>
+        <div class="ticker-row dir-left tone-ham" style="top:63%;">
+            <span class="track" style="animation-duration:31s;">✨ LEGITIMATE EMAIL – Order Confirmed #12345 • Class Schedule Update • Dinner This Weekend? • ✨ LEGITIMATE EMAIL – Order Confirmed #12345 • Class Schedule Update • Dinner This Weekend? • ✨ LEGITIMATE EMAIL – Order Confirmed #12345 • Class Schedule Update • Dinner This Weekend? • ✨ LEGITIMATE EMAIL – Order Confirmed #12345 • Class Schedule Update • Dinner This Weekend? •</span>
+        </div>
+        <div class="ticker-row dir-right tone-gold" style="top:75%;">
+            <span class="track" style="animation-duration:24s;">🚨 SPAM ALERT – FREE GIFT CARD! • CLICK HERE NOW • LIMITED TIME OFFER • 🚨 SPAM ALERT – FREE GIFT CARD! • CLICK HERE NOW • LIMITED TIME OFFER • 🚨 SPAM ALERT – FREE GIFT CARD! • CLICK HERE NOW • LIMITED TIME OFFER • 🚨 SPAM ALERT – FREE GIFT CARD! • CLICK HERE NOW • LIMITED TIME OFFER •</span>
+        </div>
+        <div class="ticker-row dir-left tone-spam" style="top:87%;">
+            <span class="track" style="animation-duration:26s;">🚨 URGENT: WORK FROM HOME $5000/WEEK GUARANTEED! • PAY PROCESSING FEE NOW • 🚨 URGENT: WORK FROM HOME $5000/WEEK GUARANTEED! • PAY PROCESSING FEE NOW • 🚨 URGENT: WORK FROM HOME $5000/WEEK GUARANTEED! • PAY PROCESSING FEE NOW • 🚨 URGENT: WORK FROM HOME $5000/WEEK GUARANTEED! • PAY PROCESSING FEE NOW •</span>
+        </div>
+        <div class="ticker-row dir-right tone-ham" style="top:96%;">
+            <span class="track" style="animation-duration:33s;">✨ TRUSTED SENDER – Project Update • Invoice Attached • Meeting Notes Shared • ✨ TRUSTED SENDER – Project Update • Invoice Attached • Meeting Notes Shared • ✨ TRUSTED SENDER – Project Update • Invoice Attached • Meeting Notes Shared • ✨ TRUSTED SENDER – Project Update • Invoice Attached • Meeting Notes Shared •</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="heading-wrapper">
+            <h1>AI Spam Email Detector</h1>
+        </div>
+        <p>Enter the email content below to analyze whether it is Spam or Ham (Safe).</p>
+        
+        <form action="/predict" method="POST">
+            <div class="dropdown-wrapper">
+                <select id="emailSampler">
+                    <option value="" selected>-- Select a Training/Learning Test Sample Email --</option>
+                    
+                    <optgroup label="🚨 SPAM EMAIL EXAMPLES">
+                        <option value="Subject: Congratulations! You Won $10,000!&#10;&#10;Dear Winner,&#10;&#10;Congratulations! Your email has been selected to receive a cash prize of $10,000. To claim your reward, click the link below and provide your personal details immediately.&#10;&#10;Claim now: http://fake-prize-example.com&#10;&#10;Hurry! This offer expires in 24 hours.">Example 1 – Fake Prize</option>
+                        <option value="Subject: Your Bank Account Has Been Suspended&#10;&#10;Dear Customer,&#10;&#10;We detected suspicious activity on your account. Please verify your identity by clicking the link below, or your account will be permanently suspended.&#10;&#10;Verify here: http://fake-bank-login.com&#10;&#10;Thank you,&#10;Bank Security Team">Example 2 – Phishing Email</option>
+                        <option value="Subject: You Are Our Lucky Lottery Winner!&#10;&#10;Congratulations!&#10;&#10;You have won $500,000 in our international lottery. To receive your winnings, send your full name, phone number, and bank details.&#10;&#10;Best regards,&#10;Lottery Claims Department">Example 3 – Lottery Scam</option>
+                        <option value="Subject: URGENT: Work From Home and Earn $5,000 Weekly! 100% GUARANTEED!&#10;&#10;Dear Job Seeker,&#10;&#10;CONGRATULATIONS! Your profile has been selected for an exclusive online remote position.&#10;&#10;No experience required! Start earning huge amounts of money from the comfort of your home today. To secure your spot and start receiving your $5,000 weekly payout, you must register today and pay a small processing fee immediately.&#10;&#10;ACT NOW! Limited positions available! Click the secure link below to activate your account and claim your sign-up bonus:&#10;&#10;http://instant-cash-work-home.net/login&#10;&#10;Hurry, this lifetime opportunity expires in 12 hours!">Example 4 – Fake Job Offer (Updated)</option>
+                    </optgroup>
+                    
+                    <optgroup label="✨ HAM (LEGITIMATE) EXAMPLES">
+                        <option value="Subject: Team Meeting Reminder&#10;&#10;Hi Team,&#10;&#10;This is a reminder that our weekly meeting will be held tomorrow at 10:00 AM in the conference room. Please bring your project updates.&#10;&#10;Thank you.">Example 1 – Meeting Reminder</option>
+                        <option value="Subject: Your Order Has Been Confirmed&#10;&#10;Hello John,&#10;&#10;Thank you for shopping with us. Your order #12345 has been confirmed and will be shipped within two business days.&#10;&#10;Regards,&#10;Customer Support">Example 2 – Order Confirmation</option>
+                        <option value="Subject: Class Schedule Update&#10;&#10;Dear Students,&#10;&#10;Please note that the Data Science lecture scheduled for Friday has been moved to 2:00 PM in Room B204.&#10;&#10;Thank you.">Example 3 – University Notice</option>
+                        <option value="Subject: Dinner This Weekend?&#10;&#10;Hi Sarah,&#10;&#10;I hope you're doing well. Would you like to have dinner together this Saturday evening? Let me know what time works best for you.&#10;&#10;Looking forward to seeing you!">Example 4 – Friend's Email</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <textarea name="message" placeholder="Paste your email content here..." required>{{ text }}</textarea>
+            <button type="submit">Analyze Email</button>
+        </form>
+
+        {% if prediction %}
+            <div class="result {{ status_class }}">
+                {% if status_class == 'spam' %}
+                    <span class="icon">🚨</span>
+                {% else %}
+                    <span class="icon">✨</span>
+                {% endif %} 
+                {{ prediction }}
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const textarea = document.querySelector('textarea[name="message"]');
+            const resultBanner = document.querySelector('.result');
+            const emailSampler = document.getElementById('emailSampler');
+
+            // 1. Auto-clear result banner when textarea is fully emptied manually
+            if (textarea && resultBanner) {
+                textarea.addEventListener('input', function() {
+                    if (this.value.trim() === '') {
+                        resultBanner.style.display = 'none';
+                        if (emailSampler) emailSampler.value = ""; // Reset dropdown selection
+                    }
+                });
+            }
+
+            // 2. Handle dropdown item change to auto-fill text and clear previous output
+            if (emailSampler && textarea) {
+                emailSampler.addEventListener('change', function() {
+                    const selectedText = this.value;
+                    
+                    if (selectedText !== '') {
+                        textarea.value = selectedText; // Load text into box
+                        
+                        if (resultBanner) {
+                            resultBanner.style.display = 'none'; // Wipe old prediction clean
+                        }
+                        
+                        textarea.focus(); // Smooth UX focus highlight
+                    }
+                });
+            }
+        });
+    </script>
+
+</body>
+</html>
